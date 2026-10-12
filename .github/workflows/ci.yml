@@ -53,6 +53,8 @@ jobs:
         run: npm run test:e2e
       - name: Production build
         run: npm run build
+      - name: Production web smoke test
+        run: npm run test:production-web
       - name: Preserve browser failure artifacts
         if: always()
         uses: actions/upload-artifact@v7.0.2

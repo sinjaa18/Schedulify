@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: schedulify-portfolio-demo
+    runtime: node
+    plan: free
+    region: singapore
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: npm run db:migrate && npm run start:api
+    healthCheckPath: /api/health/ready
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: DATABASE_SSL
+        value: "true"
+      - key: COOKIE_SECURE
+        value: "true"

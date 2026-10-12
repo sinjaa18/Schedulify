@@ -1,6 +1,16 @@
 # Schedulify
 
-Schedulify is a React 19/Vite scheduling application with a Node API and PostgreSQL-backed identity and timetable state. Resource management, deterministic generation, independent validation, HOD publication, and scoped Teacher/Student views are server-authoritative.
+Schedulify addresses the constraint-heavy work of building a weekly timetable: meeting exact class requirements while respecting teacher eligibility, room and batch availability, and collision rules. It is a full-stack timetable application built with React 19, Vite, a Node.js API, and PostgreSQL. The server owns identity and timetable state; deterministic search generates candidates, an independent validator checks them, and an HOD controls publication.
+
+### Project highlights
+
+- Manage batches, subjects, rooms, teacher eligibility, availability, and exact weekly session requirements.
+- Generate complete schedules with a deterministic constraint-search algorithm; reject incomplete or invalid candidates.
+- Translate administrator preferences with an AI Copilot into reviewable scheduling rules. The model proposes rules but does not create assignments or approve schedules.
+- Persist accounts, scheduling data, timetable versions, and approval history in PostgreSQL, with server-side role checks for Admin, HOD, Teacher, and Student workflows.
+- Serve the React app and Node API on one origin, with PostgreSQL and provider credentials kept server-side.
+
+See [Architecture](./ARCHITECTURE.md) for runtime boundaries and data flow, and [Deployment](./DEPLOYMENT.md) for the prepared production topology and its verification status.
 
 ## Domain model
 
@@ -39,6 +49,10 @@ The API owns identity. Emails are trimmed and lowercased, unique in PostgreSQL, 
 The server issues opaque random session cookies. Only SHA-256 digests of session and CSRF tokens are persisted. Cookies are `HttpOnly`, `SameSite=Lax`, scoped to `/`, and expire after 12 hours. Set `COOKIE_SECURE=true` in production behind HTTPS. State-changing API calls require the matching session CSRF token and same-origin `Origin`; set `PUBLIC_APP_ORIGIN` to the exact public origin when a reverse proxy changes the request host. Login failures use a generic message and are rate limited to ten attempts per IP per minute per API process.
 
 Server policy protects account provisioning, resource and rule mutations, generation, HOD approval, and own/assigned timetable reads. Teacher and Student scopes derive from persistent account links.
+
+## Deploy a portfolio demo
+
+A no-Docker deployment recipe for a public React + Node app with PostgreSQL is in [DEPLOYMENT.md](./DEPLOYMENT.md#portfolio-demo-deployment-render--neon). The included Render Blueprint serves frontend assets and /api/* from one origin; Neon supplies PostgreSQL. Passing CI verifies code checks; it does not itself mean a live deployment exists.
 
 ## Run locally
 
@@ -125,9 +139,9 @@ The local test service listens only on loopback port 55432 and uses test-only cr
 - `npm run build`: root-path static production build used by the Nginx deployment image.
 - `npm run verify`: unit + lint + PostgreSQL + E2E + production build. It expects both test URLs and Chromium to be configured.
 
-GitHub Actions in `.github/workflows/ci.yml` runs unit tests, lint, PostgreSQL 18 integration tests, a full dependency audit, Chromium E2E, and the build. It preserves browser traces on failure. CI has read-only repository permissions and uses disposable test credentials. It does not deploy production because no deployment host or credentials were available to verify. The workflow is configured locally but hosted GitHub Actions has not been verified from this workspace.
+GitHub Actions in `.github/workflows/ci.yml` runs unit tests, lint, PostgreSQL 18 integration tests, a full dependency audit, Chromium E2E, and the build. It preserves browser traces on failure. CI has read-only repository permissions and uses disposable test credentials. The hosted run for pre-fix commit `93edbc3e80b6706485179d97c7c25bcd807bf213` failed in E2E because Tailwind's PostCSS dependency was missing. The dependency/configuration correction described in this repository passed local verification; a hosted run for the corrected snapshot is still required. CI does not deploy production.
 
-The public repository's Actions page currently shows two successful legacy `pages-build-deployment` runs, most recently on October 10, 2026 ([latest Pages run](https://github.com/sinjaa18/Schedulify/actions/runs/38067578500)). Those dynamic Pages runs do not execute this repository's new verification workflow or exercise the Node/PostgreSQL application. This workspace does not change the remote Pages settings. The former local GitHub Pages publisher is removed because a static-only host cannot serve the authenticated API.
+The former GitHub Pages publisher was removed because a static-only host cannot serve the authenticated API. Legacy Pages build workflows do not verify the Node/PostgreSQL application. No remote Pages settings are changed by this repository.
 
 ## API operations and security
 
@@ -199,6 +213,18 @@ flowchart LR
 - **Copilot:** The provider converts natural language into a bounded structured rule proposal against a server-side catalog. Administrators review and confirm supported rules. The model never creates assignments or approves a schedule.
 - **Security:** The API owns account roles and identity links. Opaque sessions and CSRF checks protect writes; Teacher and Student reads derive identity from the authenticated account. Database and provider credentials remain server-side.
 
+### Screenshots
+
+There are no genuine application screenshots in the repository yet. Capture these manually from a running app with disposable demo data and accounts; use fictional names and avoid real credentials or student information:
+
+1. Admin domain setup showing batches, requirements, teacher eligibility, rooms, and availability.
+2. AI Copilot rule review showing a natural-language request and the structured rule awaiting confirmation.
+3. Generated timetable candidate with its independent validation result visible.
+4. HOD review showing candidate details and the publication action or published status.
+5. Teacher or Student view showing the authenticated, scoped timetable.
+
+Use screenshots from the actual application only. Add them under a repository image directory and link them here with relative paths after capture.
+
 ### Demonstration plan
 
 1. Start the disposable PostgreSQL service, configure `.env` and `.env.test`, apply migrations, and provision an Admin using the documented commands.
@@ -208,7 +234,7 @@ flowchart LR
 5. Sign in as linked Teacher and Student accounts. Show each assigned view and the API’s resistance to forged batch/teacher query IDs.
 6. Run `npm run verify` to show automated unit, lint, real PostgreSQL, and browser checks. The E2E harness uses a deterministic provider fixture; no live provider key is needed.
 
-No portfolio screenshot is included in this repository yet. Use the E2E journey as the repeatable demonstration script; capture screenshots only from a separately prepared demo database and browser session.
+Use the E2E journey above as a repeatable demonstration script. Capture portfolio images only from a separately prepared demo database and browser session.
 
 ### Interview talking points
 
@@ -221,7 +247,14 @@ No portfolio screenshot is included in this repository yet. Use the E2E journey 
 7. Nginx serves static assets and proxies a same-origin API, while Node and PostgreSQL remain private behind the public web entry point.
 8. Limitations include first-feasible search, exponential worst-case runtime, synchronous execution, process-local login throttling, and no live infrastructure or managed backup verification.
 
-### Resume bullets
+### Resume project entry
 
-- Built a PostgreSQL-backed timetable system with role-scoped accounts, deterministic constraint search, independent validation, and revision-checked HOD publication; verified with 35 unit tests, 2 PostgreSQL integration tests, and 3 Chromium E2E tests locally.
-- Reduced median runtime from 4.53 s to 0.73 s on a synthetic 96-session benchmark (about 84%) using grouped MRV candidate counting and maintained occupancy indexes; these fixture measurements are not a production throughput guarantee.
+**Schedulify — Constraint-Aware Timetable Scheduling Platform**
+
+*React 19, Vite, Node.js, PostgreSQL, Playwright, Docker, GitHub Actions*
+
+- Built a PostgreSQL-backed scheduling platform with role-scoped Admin, HOD, Teacher, and Student workflows, persistent timetable versions, and revision-checked publication.
+- Implemented deterministic constraint search using MRV, load-aware ordering, and forward checking, followed by independent validation of generated schedules.
+- Added an AI Copilot that maps administrator language to confirmed scheduling rules; locally verified with 35 unit tests, 2 PostgreSQL integration tests, 3 Chromium E2E journeys, lint, production build, and a zero-vulnerability dependency audit.
+
+On a synthetic 96-session benchmark, grouped MRV candidate counting reduced median runtime from 4.53 s to 0.73 s (about 84%). This fixture result is not a production throughput or scalability guarantee.

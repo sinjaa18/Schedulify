@@ -41,6 +41,7 @@ function sessionCookie(req) {
 }
 function expectedOrigin(req) {
   if (process.env.PUBLIC_APP_ORIGIN) return process.env.PUBLIC_APP_ORIGIN.replace(/\/$/, "");
+  if (process.env.RENDER_EXTERNAL_HOSTNAME) return "https://" + process.env.RENDER_EXTERNAL_HOSTNAME;
   const proto = req.socket.encrypted ? "https" : "http";
   return `${proto}://${req.headers.host}`;
 }

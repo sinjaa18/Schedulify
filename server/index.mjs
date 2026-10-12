@@ -1,16 +1,59 @@
 import { createServer } from "node:http";
-import { pathToFileURL } from "node:url";
+import { readFile, stat } from "node:fs/promises";
+import { extname, resolve, sep } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { z } from "zod";
 import { interpretRequest } from "./provider.mjs";
 import { getPool } from "./database.mjs";
 import { authenticateRequest, handleAuth, hasPermission, verifyCsrf } from "./auth.mjs";
 import { approveTimetable, generateCandidate, listTimetables, readDomain, readOwnPublishedTimetable, readRevision, readRules, readTimetable, rejectTimetable, replaceRules, saveDomain, SchedulingError } from "./scheduling.mjs";
 
-const PORT = Number(process.env.API_PORT || 3001);
+const PORT = Number(process.env.PORT || process.env.API_PORT || 3001);
 const HOST = process.env.API_HOST || "0.0.0.0";
 const WINDOW_MS = 60_000;
 const MAX_REQUESTS = 12;
 const buckets = new Map();
+const WEB_ROOT = resolve(fileURLToPath(new URL("../dist/", import.meta.url)));
+const WEB_TYPES = {
+  ".css": "text/css; charset=utf-8",
+  ".html": "text/html; charset=utf-8",
+  ".ico": "image/x-icon",
+  ".js": "text/javascript; charset=utf-8",
+  ".json": "application/json; charset=utf-8",
+  ".png": "image/png",
+  ".svg": "image/svg+xml",
+  ".txt": "text/plain; charset=utf-8",
+  ".webp": "image/webp",
+  ".woff": "font/woff",
+  ".woff2": "font/woff2",
+};
+
+async function serveWeb(req, res, url) {
+  if (req.method !== "GET" && req.method !== "HEAD") return send(res, 404, { error: "Not found" });
+  let pathname;
+  try { pathname = decodeURIComponent(url.pathname); }
+  catch { return send(res, 400, { error: "Invalid path." }); }
+  let target = resolve(WEB_ROOT, "." + pathname);
+  if (target !== WEB_ROOT && !target.startsWith(WEB_ROOT + sep)) return send(res, 404, { error: "Not found" });
+  let content;
+  try {
+    if ((await stat(target)).isDirectory()) target = resolve(target, "index.html");
+    content = await readFile(target);
+  } catch {
+    if (extname(pathname)) return send(res, 404, { error: "Not found" });
+    target = resolve(WEB_ROOT, "index.html");
+    try { content = await readFile(target); }
+    catch { return send(res, 503, { error: "Web assets are unavailable." }); }
+  }
+  const hashedAsset = target.startsWith(resolve(WEB_ROOT, "assets") + sep);
+  res.writeHead(200, {
+    "content-type": WEB_TYPES[extname(target)] || "application/octet-stream",
+    "content-length": content.length,
+    "cache-control": hashedAsset ? "public, max-age=31536000, immutable" : "no-cache",
+    "x-content-type-options": "nosniff",
+  });
+  res.end(req.method === "HEAD" ? undefined : content);
+}
 
 function send(res, status, data) {
   res.writeHead(status, { "content-type": "application/json", "cache-control": "no-store" });
@@ -53,6 +96,7 @@ export function createApiServer({ poolProvider = getPool, interpret = interpretR
     try { await poolProvider().query("SELECT 1"); return send(res, 200, { ok: true, checks: { postgres: "available" } }); }
     catch { return send(res, 503, { ok: false, checks: { postgres: "unavailable" } }); }
   }
+  if (process.env.NODE_ENV === "production" && url.pathname !== "/api" && !url.pathname.startsWith("/api/")) return serveWeb(req, res, url);
   let session;
   try { session = await authenticateRequest(req, poolProvider()); }
   catch { return send(res, 503, { error: "Authentication service is temporarily unavailable." }); }
@@ -131,7 +175,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   } else if (!Number.isInteger(PORT) || PORT < 1 || PORT > 65535) {
     console.error("API_PORT must be an integer between 1 and 65535.");
     process.exitCode = 1;
-  } else if (process.env.NODE_ENV === "production" && (process.env.COOKIE_SECURE !== "true" || !process.env.PUBLIC_APP_ORIGIN?.startsWith("https://"))) {
+  } else if (process.env.NODE_ENV === "production" && (process.env.COOKIE_SECURE !== "true" || !(process.env.PUBLIC_APP_ORIGIN || (process.env.RENDER_EXTERNAL_HOSTNAME ? "https://" + process.env.RENDER_EXTERNAL_HOSTNAME : "")).startsWith("https://"))) {
     console.error("Production requires COOKIE_SECURE=true and an HTTPS PUBLIC_APP_ORIGIN.");
     process.exitCode = 1;
   } else {
