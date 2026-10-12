@@ -23,7 +23,7 @@ Schedulify helps institutions create weekly timetables while respecting subject 
 
 Manage rooms, teachers, subjects, and the subjects each teacher is eligible to teach.
 
-![Schedulify Admin configuration](docs\screenshots\admin-domain-setup.png)
+![Schedulify Admin configuration](docs/screenshots/admin-domain-setup.png)
 
 ### HOD review and publication
 
@@ -188,3 +188,7 @@ This is a local benchmark result, not a production throughput or scalability gua
 - [Architecture guide](./ARCHITECTURE.md)
 - [Deployment guide](./DEPLOYMENT.md)
 - [Source repository](https://github.com/sinjaa18/Schedulify)
+
+
+
+

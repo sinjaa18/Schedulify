@@ -16,7 +16,7 @@ Estimate is before taxes, domain registration, snapshot storage, and transfer ov
 
 ## Prerequisites
 
-- An approved Git commit containing the intended release snapshot and a green hosted CI run. The current local release snapshot is uncommitted, so it cannot be cloned by the VM yet.
+- An approved Git commit containing the intended release snapshot and a green hosted CI run. The corrected Tailwind snapshot still needs a successful hosted CI run before staging deployment.
 - An AWS account with Lightsail in `ap-south-1` (Mumbai), a person authorized to create/delete the proposed VM and database, and a billing alert.
 - A DNS name you control, pointed to the VM's static IPv4 address. Domain purchase cost is not included above. HTTPS requires a publicly resolvable name and inbound TCP 80/443 for certificate issuance and renewal.
 - The approved operator's SSH public key and fixed public IP/CIDR. Keep the private key outside the repository and restrict its local file permissions.
@@ -48,7 +48,7 @@ After the approved commit has passed hosted CI, connect to the VM and check out 
 
 ```sh
 sudo install -d -o ubuntu -g ubuntu /opt/schedulify
-git clone https://github.com/sinjaa18/Schedulify-SIHPrototype.git /opt/schedulify/repo
+git clone https://github.com/sinjaa18/Schedulify.git /opt/schedulify/repo
 cd /opt/schedulify/repo
 git checkout <approved-release-commit>
 git rev-parse HEAD
