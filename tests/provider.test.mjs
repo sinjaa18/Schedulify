@@ -19,7 +19,7 @@ test("uses mocked structured output and validates the result", async () => {
   let sent;
   const result = await interpretRequest(input, { apiKey: "test-key", fetchImpl: async (_url, options) => {
     sent = JSON.parse(options.body);
-    return { ok: true, headers: { get: () => "req_test_123" }, json: async () => ({ choices: [{ message: { content: JSON.stringify(structured) } }] }) };
+    return { ok: true, status: 200, headers: { get: (name) => name === "x-request-id" ? "req_test_123" : name === "content-type" ? "application/json" : null }, text: async () => JSON.stringify({ choices: [{ message: { content: JSON.stringify(structured) } }] }) };
   } });
   assert.equal(sent.response_format.type, "json_schema");
   assert.equal(result.status, 200);
@@ -56,11 +56,29 @@ test("distinguishes quota errors from request-schema errors", async () => {
   assert.match(schema.body.error, /structured-output schema/);
 });
 
+test("diagnoses non-JSON provider responses without logging the response body", async () => {
+  const original = console.error;
+  const logs = [];
+  console.error = (...args) => logs.push(args.join(" "));
+  let result;
+  try {
+    result = await interpretRequest(input, { apiKey: "test-key", fetchImpl: async () => ({
+      ok: true, status: 200,
+      headers: { get: (name) => ({ "content-type": "text/html; charset=utf-8", "x-openrouter-request-id": "req_openrouter_test" })[name] || null },
+      text: async () => "<html>private upstream body</html>",
+    }) });
+  } finally { console.error = original; }
+  assert.equal(result.status, 502);
+  assert.match(result.body.error, /non-JSON response.*HTTP 200.*text\/html/i);
+  assert.match(logs.join(" "), /req_openrouter_test/);
+  assert.match(logs.join(" "), /html_or_markup/);
+  assert.doesNotMatch(logs.join(" "), /private upstream body|test-key/);
+});
 test("handles transport failures and malformed output", async () => {
   const network = await interpretRequest(input, { apiKey: "test-key", fetchImpl: async () => { throw Object.assign(new TypeError("Failed to fetch"), { code: "ECONNRESET" }); } });
   assert.equal(network.status, 502);
   assert.match(network.body.error, /connect to the AI provider/);
-  const malformed = await interpretRequest(input, { apiKey: "test-key", fetchImpl: async () => ({ ok: true, headers: { get: () => null }, json: async () => ({ choices: [{ message: { content: "not json" } }] }) }) });
+  const malformed = await interpretRequest(input, { apiKey: "test-key", fetchImpl: async () => ({ ok: true, status: 200, headers: { get: () => "application/json" }, text: async () => JSON.stringify({ choices: [{ message: { content: "not json" } }] }) }) });
   assert.equal(malformed.status, 502);
   assert.match(malformed.body.error, /malformed structured data/);
 });

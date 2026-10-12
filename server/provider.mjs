@@ -71,11 +71,25 @@ export async function interpretRequest(input, { apiKey = process.env.OPENAI_API_
   }
 
   let payload;
+  let responseText = "";
+  const contentType = safeField(response.headers?.get?.("content-type"));
+  const responseRequestId = safeField(response.headers?.get?.("x-request-id"))
+    || safeField(response.headers?.get?.("x-openrouter-request-id"))
+    || requestId;
   try {
-    payload = await response.json();
+    responseText = await response.text();
+    payload = JSON.parse(responseText);
   } catch {
-    console.error("Copilot provider returned invalid response JSON", JSON.stringify({ requestId }));
-    return { status: 502, body: { error: "The AI provider returned an unreadable response. Check Render logs for the provider request ID." } };
+    const details = {
+      status: Number(response.status) || 502,
+      contentType,
+      requestId: responseRequestId,
+      bodyKind: /^\s*</.test(responseText) ? "html_or_markup" : responseText.length ? "non_json_text" : "empty",
+      bodyLength: responseText.length,
+    };
+    console.error("Copilot provider returned invalid response JSON", JSON.stringify(details));
+    const responseDescription = `HTTP ${details.status}${contentType ? ` (${contentType})` : ""}`;
+    return { status: 502, body: { error: `The AI provider returned a non-JSON response: ${responseDescription}. Check OPENAI_API_URL and Render logs.` } };
   }
   const content = payload.choices?.[0]?.message?.content;
   if (!content) {
