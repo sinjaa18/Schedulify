@@ -31,7 +31,17 @@ export default function CopilotPanel({ user, csrfToken, acceptedRules, onSaveRul
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Could not interpret the request.");
-      setInterpretation(data);
+      // The API wraps a successful interpretation in { result, errors }.
+      // Accept both the wrapped server response and a direct interpretation.
+      const parsed = data?.result ?? data;
+      if (!parsed || typeof parsed.summary !== "string" || !Array.isArray(parsed.rules)) {
+        throw new Error("The AI provider returned an unexpected response format. Please retry; your timetable remains unchanged.");
+      }
+      setInterpretation({
+        summary: parsed.summary,
+        rules: parsed.rules,
+        nextSteps: Array.isArray(parsed.nextSteps) ? parsed.nextSteps : [],
+      });
     } catch (err) { setError(err.message || "The AI service is unavailable."); }
     finally { setLoading(false); }
   }
