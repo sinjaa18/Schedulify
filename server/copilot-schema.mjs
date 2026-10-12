@@ -20,6 +20,23 @@ export const interpretationSchema = z.object({
   nextSteps: z.array(z.string().max(200)).max(4),
 }).strict();
 
+const wildcardReferenceValues = new Set([
+  'any', 'all', 'all batches', 'all teachers', 'all subjects', 'all rooms',
+  'any batch', 'any teacher', 'any subject', 'any room',
+  'every batch', 'every teacher', 'every subject', 'every room',
+  'everyone', 'everybody', 'all of them', 'all resources',
+  'no preference', 'no specific batch', 'no specific teacher', 'no specific subject', 'no specific room',
+  'none', 'null', 'n/a', '*',
+]);
+
+function normaliseReference(value) {
+  if (typeof value !== 'string') return value;
+  const trimmed = value.trim();
+  const token = trimmed.toLowerCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ');
+  if (!token || wildcardReferenceValues.has(token)) return null;
+  return trimmed;
+}
+
 export function validateReferences(result, catalog) {
   const errors = [];
   const names = {
@@ -29,20 +46,23 @@ export function validateReferences(result, catalog) {
     room: catalog.rooms,
   };
   const rules = result.rules.map((rule, index) => {
-    let validation = rule.validation;
-    let clarification = rule.clarification;
-    if (rule.type === "unsupported") {
-      validation = "unsupported";
-      clarification ||= "This request is outside the scheduling rules supported by Schedulify.";
+    const normalisedRule = { ...rule };
+    for (const field of Object.keys(names)) normalisedRule[field] = normaliseReference(rule[field]);
+    let validation = normalisedRule.validation;
+    let clarification = normalisedRule.clarification;
+    if (normalisedRule.type === 'unsupported') {
+      validation = 'unsupported';
+      clarification ||= 'This request is outside the scheduling rules supported by Schedulify.';
     }
     for (const [field, values] of Object.entries(names)) {
-      if (rule[field] && !values.some((value) => value.toLowerCase() === rule[field].toLowerCase())) {
-        validation = "needs_clarification";
-        clarification = `“${rule[field]}” is not in the current ${field} list. Check the name or add it in Admin.`;
-        errors.push(`Rule ${index + 1}: unknown ${field} “${rule[field]}”.`);
+      const reference = normalisedRule[field];
+      if (reference && !values.some((value) => value.toLowerCase() === reference.toLowerCase())) {
+        validation = 'needs_clarification';
+        clarification = `â€œ${reference}â€ is not in the current ${field} list. Check the name or add it in Admin.`;
+        errors.push(`Rule ${index + 1}: unknown ${field} â€œ${reference}â€.`);
       }
     }
-    return { ...rule, validation, clarification };
+    return { ...normalisedRule, validation, clarification };
   });
   return { result: { ...result, rules }, errors };
 }

@@ -40,3 +40,16 @@ test("unsupported interpreted requests remain explicitly unsupported", () => {
   const { result } = validateReferences(parsed, known);
   assert.equal(result.rules[0].validation, "unsupported");
 });
+test("normalizes wildcard Copilot references instead of treating them as resource names", () => {
+  const parsed = interpretationSchema.parse({ summary: "Keep Friday afternoon free for all batches.", rules: [
+    rule({ type: "keep_day_free", priority: "hard", batch: "all", teacher: "any", subject: "any", room: "any", day: "Fri", period: "afternoon", explanation: "Keep Friday afternoon free for all batches." }),
+  ], nextSteps: [] });
+  const { result, errors } = validateReferences(parsed, known);
+  assert.equal(errors.length, 0);
+  assert.equal(result.rules[0].validation, "ready");
+  assert.equal(result.rules[0].clarification, null);
+  assert.equal(result.rules[0].batch, null);
+  assert.equal(result.rules[0].teacher, null);
+  assert.equal(result.rules[0].subject, null);
+  assert.equal(result.rules[0].room, null);
+});
