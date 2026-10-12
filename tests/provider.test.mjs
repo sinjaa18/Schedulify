@@ -26,6 +26,28 @@ test("uses mocked structured output and validates the result", async () => {
   assert.equal(result.body.result.rules[0].validation, "ready");
 });
 
+test("uses JSON mode for OpenRouter and validates the free-model response locally", async () => {
+  let sent;
+  const result = await interpretRequest(input, {
+    apiKey: "test-openrouter-key",
+    apiUrl: "https://openrouter.ai/api/v1/chat/completions",
+    model: "google/gemma-4-26b-a4b-it:free",
+    fetchImpl: async (_url, options) => {
+      sent = { body: JSON.parse(options.body), headers: options.headers };
+      return {
+        ok: true, status: 200,
+        headers: { get: (name) => name === "content-type" ? "application/json" : name === "x-request-id" ? "req_openrouter_test" : null },
+        text: async () => JSON.stringify({ choices: [{ message: { content: JSON.stringify(structured) } }] }),
+      };
+    },
+  });
+  assert.equal(sent.body.response_format.type, "json_object");
+  assert.equal(sent.body.stream, false);
+  assert.equal(sent.body.model, "google/gemma-4-26b-a4b-it:free");
+  assert.equal(sent.headers["HTTP-Referer"], "https://schedulify-portfolio-demo.onrender.com");
+  assert.equal(result.status, 200);
+  assert.equal(result.body.result.rules[0].validation, "ready");
+});
 test("explains authentication errors and logs only safe provider metadata", async () => {
   const original = console.error;
   const logs = [];

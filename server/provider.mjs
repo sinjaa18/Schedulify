@@ -36,15 +36,16 @@ function providerFailureMessage(status, code) {
 export async function interpretRequest(input, { apiKey = process.env.OPENAI_API_KEY, apiUrl = process.env.OPENAI_API_URL || "https://api.openai.com/v1/chat/completions", model = process.env.OPENAI_MODEL || "gpt-4o-mini", fetchImpl = fetch } = {}) {
   if (!apiKey) return { status: 503, body: { error: "AI is not configured. Set OPENAI_API_KEY on the server to enable interpretation." } };
 
+  const usesOpenRouter = (() => { try { return new URL(apiUrl).hostname === "openrouter.ai"; } catch { return false; } })();
   let response;
   try {
     response = await fetchImpl(apiUrl, {
       method: "POST", signal: AbortSignal.timeout(20_000),
-      headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
-      body: JSON.stringify({ model, temperature: 0,
-        response_format: { type: "json_schema", json_schema: { name: "timetable_requirements", strict: true, schema: outputSchema } },
+      headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json", ...(usesOpenRouter ? { "HTTP-Referer": "https://schedulify-portfolio-demo.onrender.com", "X-Title": "Schedulify" } : {}) },
+      body: JSON.stringify({ model, temperature: 0, stream: false,
+        response_format: usesOpenRouter ? { type: "json_object" } : { type: "json_schema", json_schema: { name: "timetable_requirements", strict: true, schema: outputSchema } },
         messages: [
-          { role: "system", content: `Interpret scheduling requests into the schema only. Supported types: keep_day_free, prefer_subject_before_lunch, avoid_teacher_consecutive. For an unhandled scheduling rule, use type unsupported and explain it. Days are ${days.join(", ")}. Batches are in the supplied catalogue. Slots group into morning (9-10, 10-11, 11-12) and afternoon (2-3, 3-4); preserve a morning/afternoon scope when stated, otherwise use null. Do not invent custom slots. Use null for every unspecified resource filter. Treat phrases such as any, all, all batches, or all teachers as no specific resource filter rather than literal names; never put words such as any or all into batch, teacher, subject, or room fields. Unknown or ambiguous named references require clarification; never guess. Mark rules ready only when the request is clear and every referenced named resource appears in the supplied catalogue. Do not claim that rules have been or can be enforced.` },
+          { role: "system", content: `Return valid JSON only, with no Markdown or code fences. Output one JSON object with exactly these top-level keys: summary (string), rules (array), and nextSteps (array). Every rule object must include type, priority, batch, teacher, subject, room, day, period, explanation, validation, and clarification. Use JSON null for every unspecified resource filter. Interpret the scheduling request according to this contract. Supported types: keep_day_free, prefer_subject_before_lunch, avoid_teacher_consecutive. For an unhandled scheduling rule, use type unsupported and explain it. Days are ${days.join(", ")}. Batches are in the supplied catalogue. Slots group into morning (9-10, 10-11, 11-12) and afternoon (2-3, 3-4); preserve a morning/afternoon scope when stated, otherwise use null. Do not invent custom slots. Use null for every unspecified resource filter. Treat phrases such as any, all, all batches, or all teachers as no specific resource filter rather than literal names; never put words such as any or all into batch, teacher, subject, or room fields. Unknown or ambiguous named references require clarification; never guess. Mark rules ready only when the request is clear and every referenced named resource appears in the supplied catalogue. Do not claim that rules have been or can be enforced.` },
           { role: "user", content: JSON.stringify(input) },
         ],
       }),
