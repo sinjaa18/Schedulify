@@ -18,10 +18,27 @@ const outputSchema = {
   },
 };
 
+function safeField(value, limit = 120) {
+  return typeof value === "string" && value.length ? value.slice(0, limit) : undefined;
+}
+
+function providerFailureMessage(status, code) {
+  if (status === 400) return "The AI provider rejected the request or structured-output schema. Check OPENAI_MODEL and the provider diagnostic in Render logs.";
+  if (status === 401) return "The AI provider rejected OPENAI_API_KEY. Check that the key is valid and belongs to the intended API project.";
+  if (status === 403) return "The AI provider denied access. Check your API project permissions and access to the configured model.";
+  if (status === 404) return "The configured AI endpoint or model was not found. Check OPENAI_API_URL and OPENAI_MODEL.";
+  if (status === 429 && ["insufficient_quota", "billing_not_active", "quota_exceeded"].includes(code)) return "The AI API quota or billing limit was reached. Check API billing and usage limits.";
+  if (status === 429) return "The AI provider rate limit was reached. Wait briefly and try again.";
+  if (status >= 500) return "The AI provider is temporarily unavailable. Try again shortly.";
+  return "The AI provider could not interpret this request. Check the provider diagnostic in Render logs.";
+}
+
 export async function interpretRequest(input, { apiKey = process.env.OPENAI_API_KEY, apiUrl = process.env.OPENAI_API_URL || "https://api.openai.com/v1/chat/completions", model = process.env.OPENAI_MODEL || "gpt-4o-mini", fetchImpl = fetch } = {}) {
   if (!apiKey) return { status: 503, body: { error: "AI is not configured. Set OPENAI_API_KEY on the server to enable interpretation." } };
+
+  let response;
   try {
-    const response = await fetchImpl(apiUrl, {
+    response = await fetchImpl(apiUrl, {
       method: "POST", signal: AbortSignal.timeout(20_000),
       headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
       body: JSON.stringify({ model, temperature: 0,
@@ -32,17 +49,52 @@ export async function interpretRequest(input, { apiKey = process.env.OPENAI_API_
         ],
       }),
     });
-    if (!response.ok) return { status: 502, body: { error: "The AI provider could not interpret this request. Please try again." } };
-    const payload = await response.json();
-    const content = payload.choices?.[0]?.message?.content;
-    if (!content) return { status: 502, body: { error: "The AI provider returned an empty interpretation." } };
-    let raw;
-    try { raw = JSON.parse(content); } catch { return { status: 502, body: { error: "The AI provider returned malformed structured data." } }; }
-    const validated = interpretationSchema.safeParse(raw);
-    if (!validated.success) return { status: 502, body: { error: "The AI provider returned an invalid interpretation." } };
-    return { status: 200, body: validateReferences(validated.data, input.catalog) };
   } catch (error) {
-    const timeout = error.name === "TimeoutError" || error.name === "AbortError";
-    return { status: 502, body: { error: timeout ? "The AI request timed out. Please try again." : "The AI provider is temporarily unavailable." } };
+    const timedOut = error?.name === "TimeoutError" || error?.name === "AbortError";
+    console.error("Copilot provider transport failure", JSON.stringify({ kind: timedOut ? "timeout" : "network_error", name: safeField(error?.name), code: safeField(error?.code) }));
+    return { status: 502, body: { error: timedOut ? "The AI provider request timed out. Try again shortly." : "Could not connect to the AI provider. Check the provider endpoint and Render logs." } };
   }
+
+  const requestId = safeField(response.headers?.get?.("x-request-id"));
+  if (!response.ok) {
+    let upstreamError = {};
+    try { upstreamError = (await response.json())?.error || {}; } catch { /* Some proxies return non-JSON errors. */ }
+    const details = {
+      status: Number(response.status) || 502,
+      type: safeField(upstreamError.type),
+      code: safeField(upstreamError.code),
+      param: safeField(upstreamError.param),
+      requestId,
+    };
+    console.error("Copilot provider HTTP failure", JSON.stringify(details));
+    return { status: 502, body: { error: providerFailureMessage(details.status, details.code) } };
+  }
+
+  let payload;
+  try {
+    payload = await response.json();
+  } catch {
+    console.error("Copilot provider returned invalid response JSON", JSON.stringify({ requestId }));
+    return { status: 502, body: { error: "The AI provider returned an unreadable response. Check Render logs for the provider request ID." } };
+  }
+  const content = payload.choices?.[0]?.message?.content;
+  if (!content) {
+    console.error("Copilot provider returned empty structured output", JSON.stringify({ requestId, hasChoices: Array.isArray(payload.choices) }));
+    return { status: 502, body: { error: "The AI provider returned an empty interpretation. Try again or check Render logs." } };
+  }
+
+  let raw;
+  try {
+    raw = JSON.parse(content);
+  } catch {
+    console.error("Copilot provider returned malformed structured output", JSON.stringify({ requestId }));
+    return { status: 502, body: { error: "The AI provider returned malformed structured data. Try again or check Render logs." } };
+  }
+
+  const validated = interpretationSchema.safeParse(raw);
+  if (!validated.success) {
+    console.error("Copilot structured output failed local schema validation", JSON.stringify({ requestId, issueCount: validated.error.issues.length }));
+    return { status: 502, body: { error: "The AI provider returned an unsupported interpretation format. Check Render logs for details." } };
+  }
+  return { status: 200, body: validateReferences(validated.data, input.catalog) };
 }
