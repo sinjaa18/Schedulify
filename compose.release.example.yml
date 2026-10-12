@@ -1,0 +1,33 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    env_file: .env.production
+    environment:
+      API_HOST: 0.0.0.0
+      API_PORT: 3001
+      NODE_ENV: production
+      COOKIE_SECURE: "true"
+    restart: unless-stopped
+    stop_grace_period: 20s
+    expose:
+      - "3001"
+
+  web:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.web
+      args:
+        VITE_BASE_PATH: /
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8080/api/health/live || exit 1"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+    ports:
+      - "8080:8080"

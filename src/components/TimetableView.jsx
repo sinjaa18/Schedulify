@@ -3,8 +3,7 @@ export default function TimetableView({ timetable }) {
   const days = ["Mon", "Tue", "Wed", "Thu", "Fri"];
   const slots = ["9-10", "10-11", "11-12", "2-3", "3-4"];
 
-  const find = (d, s) =>
-    timetable.find((t) => t.day === d && t.slot === s);
+  const find = (d, s) => timetable.filter((t) => t.day === d && t.slot === s);
 
   return (
     <div className="overflow-x-auto rounded border border-slate-700">
@@ -26,21 +25,17 @@ export default function TimetableView({ timetable }) {
                 {s}
               </td>
               {days.map((d) => {
-                const c = find(d, s);
+                const classes = find(d, s);
                 return (
                   <td
                     key={d}
                     className="border border-slate-700 p-2 h-20"
                   >
-                    {c && (
-                      <div className="bg-blue-600/20 rounded p-2 text-sm">
-                        <div className="font-bold">{c.subject}</div>
-                        <div>{c.teacher}</div>
-                        <div className="text-xs text-slate-300">
-                          {c.room}
-                        </div>
-                      </div>
-                    )}
+                    <div className="space-y-1">{classes.map((c) => <div key={c.id} className="rounded bg-blue-600/20 p-2 text-sm">
+                      <div className="font-bold">{c.subject}</div>
+                      <div>{c.teacher}</div>
+                      <div className="text-xs text-slate-300">{c.batch || "Unassigned batch"} · {c.room || "Unknown room"}</div>
+                    </div>)}</div>
                   </td>
                 );
               })}

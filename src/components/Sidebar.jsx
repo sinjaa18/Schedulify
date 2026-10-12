@@ -1,9 +1,5 @@
 import React from "react";
-export default function Sidebar({ user, setUser, setPage }) {
-  const logout = () => {
-    localStorage.removeItem("currentUser");
-    setUser(null);
-  };
+export default function Sidebar({ user, onLogout, setPage }) {
 
   return (
     <aside className="w-64 bg-slate-800 border-r border-slate-700 p-4 flex flex-col">
@@ -18,7 +14,10 @@ export default function Sidebar({ user, setUser, setPage }) {
         <NavBtn onClick={() => setPage("dashboard")}>Dashboard</NavBtn>
 
         {user.role === "Admin" && (
-          <NavBtn onClick={() => setPage("admin")}>Admin</NavBtn>
+          <>
+            <NavBtn onClick={() => setPage("admin")}>Admin</NavBtn>
+            <NavBtn onClick={() => setPage("copilot")}>AI Copilot</NavBtn>
+          </>
         )}
 
         {user.role === "HOD" && (
@@ -31,7 +30,7 @@ export default function Sidebar({ user, setUser, setPage }) {
       </nav>
 
       <button
-        onClick={logout}
+        onClick={onLogout}
         className="bg-red-600 hover:bg-red-700 text-white py-2 rounded"
       >
         Logout
